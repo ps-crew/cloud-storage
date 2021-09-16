@@ -1,4 +1,5 @@
-use futures::{stream, Stream, TryStream};
+use bytes::Bytes;
+use futures::{stream, Stream, TryStream, TryStreamExt};
 use reqwest::StatusCode;
 
 use crate::{
@@ -321,8 +322,12 @@ impl<'a> ObjectClient<'a> {
         &self,
         bucket: &str,
         file_name: &str,
-    ) -> crate::Result<impl Stream<Item = crate::Result<u8>> + Unpin> {
-        use futures::{StreamExt, TryStreamExt};
+    ) -> crate::Result<(
+        impl Stream<Item = crate::Result<Bytes>> + Unpin,
+        Option<u64>,
+    )> {
+        // use futures::{StreamExt, TryStreamExt};
+
         let url = format!(
             "{}/b/{}/o/{}?alt=media",
             crate::BASE_URL,
@@ -337,12 +342,17 @@ impl<'a> ObjectClient<'a> {
             .send()
             .await?
             .error_for_status()?;
+
         let size = response.content_length();
-        let bytes = response
-            .bytes_stream()
-            .map(|chunk| chunk.map(|c| futures::stream::iter(c.into_iter().map(Ok))))
-            .try_flatten();
-        Ok(SizedByteStream::new(bytes, size))
+
+        Ok((response.bytes_stream().map_err(crate::Error::Reqwest), size))
+
+        // let size = response.content_length();
+        // let bytes = response
+        //     .bytes_stream()
+        //     .map(|chunk| chunk.map(|c| futures::stream::iter(c.into_iter().map(Ok))))
+        //     .try_flatten();
+        // Ok(SizedByteStream::new(bytes, size))
     }
 
     /// Obtains a single object with the specified name in the specified bucket.
